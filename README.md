@@ -16,7 +16,7 @@ Frontend | HTML
 Database | MySQL
 Message-broker | RabbitMQ
 Containerizer | Docker
-OS | Windows 11
+OS | Windows 10
 
 
 ____
