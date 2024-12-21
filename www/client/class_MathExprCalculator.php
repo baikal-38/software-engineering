@@ -1,0 +1,280 @@
+<?php
+//$expr = '(3+1)*2';
+//$obj_calc = new MathExprCalculator();
+//echo $obj_calc->calc_expression($expr);
+
+
+class MathExprCalculator
+{
+
+		function calc_expression($expr)
+		{
+				$tmpLng = 0;
+				$tmpStr = '';
+
+				$expr = strtolower($expr);					//выравниваем регистр
+				$expr = str_replace(' ', '', $expr);		//удаляем пробелы
+				$expr = str_replace(')(', ')*(', $expr);	//вставляем * м/у скобками
+
+				// убедимся что скобки расставлены верно
+				for ($i=0; $i<strlen($expr); $i++)
+				{
+					$tmpStr = substr($expr, $i, 1);
+
+					if ($tmpStr == '(')	$tmpLng++;
+					if ($tmpStr == ')')	$tmpLng--;
+					if ($tmpLng < 0)	return 'Скобки расставлены не корректно!';
+				}
+
+				if ($tmpLng != 0)	return 'Скобки расставлены не корректно!';
+				
+				$r = self::CalcSummand($expr);
+				if (is_int($r))
+				{
+					return $r;
+				}
+				if (is_float($r))
+				{
+					return round($r,2);
+				}
+		}
+
+
+		private function CalcSummand($S)     //функция проверки выражения
+		{
+				//global $flag;
+				$minPriorPos = 0;
+				$NestingLevel = 0;
+				$tmpStr = "";
+				$g = "";
+				$chl = 0;
+				$stp = 0;
+
+
+				//'Не пустая ли строка?
+				if (strlen($S) == 0)	return 0; //выходим с нулём
+
+				//Проверяем, не являются ли самые внешние скобки лишними
+				self::remove_outer_brackets($S);
+
+
+				//Ищем первый оператор с минимальным приоритетом на текущем уровне вложенности    
+				$minPrior = 2;
+				for ($i = strlen($S); $i >= 1; $i--)
+				{
+						switch (substr($S, $i - 1, 1))
+						{
+							case '(':	$NestingLevel++;	break;
+							case ')':	$NestingLevel--;	break;
+							case '+':
+							case '-':
+								if ($NestingLevel == 0 && strlen($S) != strlen(substr($S, $i)))
+								{
+									$g = substr($S, $i - 2, 1);
+									if ($g != ")" && !is_numeric($g))
+									{
+										throw new Exception("Expression is invalid");
+									}
+									$minPrior = 0;
+									$minPriorPos = $i;
+									break 2;
+								}
+								break;
+							case '*':
+							case '/':
+							case '\\':
+								if ($NestingLevel == 0)
+								{
+									if ($minPrior == 2)
+									{
+										$minPrior = 1;
+										$minPriorPos = $i;
+									}
+									else
+									{
+										if ($minPriorPos == 0)	$minPriorPos = $i;
+									}
+								}
+								break;
+							case '^':
+								if ($NestingLevel == 0)
+								{
+									if ($minPrior == 2 && $minPriorPos == 0)	$minPriorPos = $i;
+								}
+								break;
+						}
+				}
+
+				if ($minPriorPos == 0)
+				{
+						//Это означает, что операторов на текущем уровне вложенности нет.
+						// это, в свою очередь, означает, что либо операнд есть число,
+						//либо он есть функция, либо выражение с минусом
+						$res = self::IsFunction($S);
+						if ($res !== true)
+						{
+								return $res; // The operand was a number, and it is calculated
+						}
+						else
+						{
+								//Операнд был функцией или выражением. Других вариантов нет, т.к.
+								//ошибка генерится в IsFunction. Переменная minPriorPos нам больше не
+								//нужна по прямому назначению. Поэтому заюзаем её для других целей.
+								//Рекурсия ...
+								$minPriorPos = strpos($S, '(');
+								$tmpStr = substr($S, 0, $minPriorPos);
+
+								switch ($tmpStr)
+								{
+									case "abs":		return abs(self::CalcSummand(substr($S, $minPriorPos + 1, strlen($S) - $minPriorPos - 1)));
+									case "atn":		return atan(self::CalcSummand(substr($S, $minPriorPos + 1, strlen($S) - $minPriorPos - 1)));
+									case "cos":		return cos(self::CalcSummand(substr($S, $minPriorPos + 1, strlen($S) - $minPriorPos - 1)));
+									case "exp":		return exp(self::CalcSummand(substr($S, $minPriorPos + 1, strlen($S) - $minPriorPos - 1)));
+									case "log":		return log(self::CalcSummand(substr($S, $minPriorPos + 1, strlen($S) - $minPriorPos - 1)));
+									case "sin":		return sin(self::CalcSummand(substr($S, $minPriorPos + 1, strlen($S) - $minPriorPos - 1)));
+									case "sqr":		return sqrt(self::CalcSummand(substr($S, $minPriorPos + 1, strlen($S) - $minPriorPos - 1)));
+									case "tan":		return tan(self::CalcSummand(substr($S, $minPriorPos + 1, strlen($S) - $minPriorPos - 1)));
+									default:
+										$tmpStr = substr($S, 0, 1); // expression type -expr
+										if ($tmpStr == '+' || $tmpStr == '-')
+										{
+											return ($tmpStr == '-' ? -1 : 1) * self::CalcSummand(substr($S, 1));
+										}
+										else
+										{
+											throw new Exception("Unknown function " . strtoupper($tmpStr) . " detected");
+										}
+								}
+						}
+				}
+				else
+				{
+						$ch1 = self::CalcSummand(substr($S, 0, $minPriorPos - 1));
+						$ch2 = self::CalcSummand(substr($S, $minPriorPos));
+						
+						// Found the desired operator. Recursion... ordinary a +-*/\^ b
+						switch (substr($S, $minPriorPos - 1, 1))
+						{
+							case '+':		return $ch1 + $ch2;
+							case '-':		return $ch1 - $ch2;
+							case '*':		return $ch1 * $ch2;
+							//case '/':		return @($ch1 / $ch2);				// Division by zero error will be generated by PHP itself...
+							case '/':		if ($ch2 == 0)	{	return 0;	}	else {	return $ch1 / $ch2;	}
+							case '\\':		if ($ch2 == 0)	{	return 0;	}	else {	return intdiv($ch1, $ch2);	}
+							case '^':
+								$chl = $ch1;
+								$stp = $ch2;
+								if ($chl < 0 && (int)$stp != $stp)
+								{
+									return -1 * pow(-1 * $chl, $stp);
+								}
+								if ($chl < 0 && (int)$stp == $stp)
+								{
+									return pow($chl, $stp);
+								}
+								if ($chl >= 0)
+								{
+									return pow($chl, $stp);
+								}
+								if ($chl < 0 && (int)$stp != $stp && $stp % 2 != 0)
+								{
+									throw new Exception("Calculation of an even root of a negative number");
+								}
+								break;
+							default:
+								// In principle, this should never occur...
+								throw new Exception("Expression is invalid");
+						}
+				}
+		}
+
+
+		private function remove_outer_brackets(&$str1)
+		{
+				$tmp = 0;
+
+				// Если уровень скобок по ходу выражения опустится до нуля,
+				// и это будет не конец выражения, то начальные и конечные
+				// скобки нужны, поскольку принадлежат разным группам.
+				// Иначе их можно удалить.
+
+				if (substr($str1, 0, 1) == '(' && substr($str1, -1) == ')')
+				{
+					for ($i=0; $i<strlen($str1); $i++)
+					{
+						if (substr($str1, $i, 1) == '(')	$tmp++;
+						if (substr($str1, $i, 1) == ')')	$tmp--;
+
+						if ($tmp == 0 && $i != strlen($str1) - 1) return false;
+					}
+				}
+				else
+				{
+					return false;
+				}
+
+				// Скобки нужно удалить
+				$str1 = substr($str1, 1, strlen($str1) - 2);
+				return true;
+		}
+
+
+		/*
+			проверяет, является ли выражение функцией - (несколько подряд идущих букв и выражение в скобках)
+			если это функция - возвращает TRUE
+			если нет - пытается вычислить и возвращает значение или ошибку
+		*/
+		private function isFunction($F)
+		{
+			//'Функция - несколько подряд идущих букв и выражение в скобках.
+			//'И больше ничего! Выражение типа "функция + функция" сюда попадать не должно,
+			//'по логике основной части программы
+			$u = 0;
+			$t = 0;
+			$p = 0;
+			$k = 0;
+			$h = '';
+
+			// правильность скобок гарантируется вызывающим кодом, поэтому достаточно
+			// проверить наличие одной, а не обоих
+			$i = strpos($F, '(');
+			if ($i === false)
+			{
+					// Явно не функция. Может, число?
+					$k = strlen($F);
+					$u = 0;
+					$t = 0;
+					do
+					{
+							$h = substr($F, $u, 1);
+							if (!is_numeric($h))
+							{
+								$p = 0;
+								if (($h == '-') || ($h == '+') && ($u == 0)) $p = 1;
+								if ($h == '.') $t++;
+								$p = 1;
+							}
+							else
+							{
+								$p = 1;
+							}
+							$u++;
+					} while ($p != 0 && $u < $k);
+					if ($p == 1 && $t < 2)
+					{
+							return floatval($F);
+					}
+					else
+					{
+							throw new Exception("Expression is invalid", ExprErrors::ERROR_INVALID_EXPRESSION);
+					}
+			}
+
+			// левая (а значит, и правая) скобки есть, и это не начальные ненужные скобки.
+			// Слева от левой скобки должнно быть имя функции. Его правильность будет
+			// анализировать вызывающий код
+			return true; // Флаг, что функция либо выражение с минусом
+		}
+}
+
+?>
